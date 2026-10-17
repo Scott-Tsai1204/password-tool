@@ -1,6 +1,6 @@
 // 離線快取：開過一次之後，沒有網路也能開啟工具。
 // 有網路時會在背景更新快取，下次開啟就是新版本。
-const CACHE = 'pwtool-v2';
+const CACHE = 'pwtool-v1.2';
 const ASSETS = ['./', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 // 一律向伺服器確認最新版，不使用瀏覽器的 HTTP 快取，避免存到舊版本

@@ -123,6 +123,7 @@ button:disabled { opacity: .55; cursor: wait; }
 .warn { background: var(--warn-bg); color: var(--warn-text); border-radius: 8px; padding: 10px 12px; font-size: 14px; margin-top: 12px; }
 .hidden { display: none !important; }
 footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 24px; }
+footer .ver { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
 </style>
 </head>
 <body>
@@ -201,7 +202,10 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
     </div>
   </section>
 
-  <footer>格式 v1 · PBKDF2-SHA256 600,000 次 · AES-256-GCM</footer>
+  <footer>
+    <div class="ver">工具版本 v1.2（2026-10-17）</div>
+    <div>加密方式：PBKDF2-SHA256 60 萬次 · AES-256-GCM（資料格式 ENC v1）</div>
+  </footer>
 </main>
 
 <script>
