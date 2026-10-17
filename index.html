@@ -4,9 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- 禁止一切連網：不載入外部資源、不能送出任何資料 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; manifest-src 'self'; worker-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <meta name="referrer" content="no-referrer">
 <title>密碼加解密工具</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<meta name="theme-color" content="#2f6fde">
 <style>
 :root {
   --bg: #f5f6f8;
@@ -204,6 +207,11 @@ footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2
 <script>
 (() => {
   'use strict';
+
+  // 網址版才啟用離線快取（本機直接開檔案時不需要）
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
 
   const ITERATIONS = 600000;
   const SALT_LEN = 16;
