@@ -1,10 +1,15 @@
 // 離線快取：開過一次之後，沒有網路也能開啟工具。
 // 有網路時會在背景更新快取，下次開啟就是新版本。
-const CACHE = 'pwtool-v1';
+const CACHE = 'pwtool-v2';
 const ASSETS = ['./', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
+// 一律向伺服器確認最新版，不使用瀏覽器的 HTTP 快取，避免存到舊版本
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(CACHE)
+      .then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (e) => {
@@ -22,7 +27,7 @@ self.addEventListener('fetch', (e) => {
   e.respondWith(
     caches.open(CACHE).then(async (cache) => {
       const cached = await cache.match(key, { ignoreSearch: true });
-      const fresh = fetch(req).then((res) => {
+      const fresh = fetch(req.url, { cache: 'no-cache' }).then((res) => {
         if (res.ok && !res.redirected) cache.put(key, res.clone());
         return res;
       });
