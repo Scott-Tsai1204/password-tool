@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- 禁止一切連網：不載入外部資源、不能送出任何資料 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
+<title>密碼加解密工具</title>
+<style>
+:root {
+  --bg: #f5f6f8;
+  --card: #ffffff;
+  --text: #1d2330;
+  --muted: #5d6677;
+  --border: #d5d9e0;
+  --accent: #2f6fde;
+  --accent-text: #ffffff;
+  --ok: #1d7f4e;
+  --err: #c0362c;
+  --warn-bg: #fff6e0;
+  --warn-text: #7a5300;
+  --mono-bg: #eef1f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14171c;
+    --card: #1e232b;
+    --text: #e6e9ee;
+    --muted: #9aa3b2;
+    --border: #353c48;
+    --accent: #5b8ff0;
+    --accent-text: #0d1117;
+    --ok: #4cc38a;
+    --err: #ff7b72;
+    --warn-bg: #3a2f12;
+    --warn-text: #f2d48a;
+    --mono-bg: #262c36;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14171c;
+  --card: #1e232b;
+  --text: #e6e9ee;
+  --muted: #9aa3b2;
+  --border: #353c48;
+  --accent: #5b8ff0;
+  --accent-text: #0d1117;
+  --ok: #4cc38a;
+  --err: #ff7b72;
+  --warn-bg: #3a2f12;
+  --warn-text: #f2d48a;
+  --mono-bg: #262c36;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", "PingFang TC", sans-serif;
+}
+main { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+.sub { color: var(--muted); margin: 0 0 20px; font-size: 14px; }
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 15px; }
+.hint { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+.row { display: flex; gap: 8px; }
+.row > input, .row > textarea { flex: 1; min-width: 0; }
+input, textarea {
+  width: 100%;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+textarea { resize: vertical; min-height: 96px; font-family: ui-monospace, Consolas, monospace; font-size: 14px; }
+input:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button {
+  font: inherit;
+  font-size: 15px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  padding: 10px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+button:disabled { opacity: .55; cursor: wait; }
+.field + .field { margin-top: 14px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.tabs { display: flex; gap: 4px; margin-bottom: 16px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 4px; }
+.tabs button { flex: 1; border: none; background: transparent; }
+.tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+.output {
+  margin-top: 14px;
+  padding: 12px;
+  background: var(--mono-bg);
+  border-radius: 8px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 14px;
+  word-break: break-all;
+}
+.result { margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+.result .label { color: var(--muted); font-size: 13px; word-break: break-all; margin-bottom: 6px; }
+.result .pw { font-family: ui-monospace, Consolas, monospace; word-break: break-all; flex: 1; min-width: 0; align-self: center; }
+.msg { margin-top: 10px; font-size: 14px; min-height: 1.2em; }
+.msg.ok { color: var(--ok); }
+.msg.err { color: var(--err); }
+.warn { background: var(--warn-bg); color: var(--warn-text); border-radius: 8px; padding: 10px 12px; font-size: 14px; margin-top: 12px; }
+.hidden { display: none !important; }
+footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 24px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>密碼加解密工具</h1>
+  <p class="sub">完全離線執行，不連網、不儲存任何資料。關閉頁面後一切都會消失。</p>
+
+  <div id="noCrypto" class="warn hidden">
+    這個瀏覽器不支援安全加密功能（Web Crypto），無法使用。請改用 Chrome、Edge、Safari 或 Firefox 開啟。
+  </div>
+
+  <section class="card">
+    <div class="field">
+      <label for="master">🔑 解鎖鑰匙</label>
+      <div class="row">
+        <input id="master" type="password" autocomplete="off" spellcheck="false">
+        <button type="button" data-toggle="master">顯示</button>
+      </div>
+      <p class="hint">這是<b>你自己記在腦中的一組密碼</b>，用來把各網站的密碼上鎖（加密）和解鎖（解密）。它不會被存在任何地方，也不用寫進 .txt。<br>閒置 5 分鐘會自動清除。解鎖鑰匙忘了，所有密碼都解不回來。</p>
+    </div>
+  </section>
+
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" id="tabDec" aria-selected="true" aria-controls="panelDec">解密（取出密碼）</button>
+    <button type="button" role="tab" id="tabEnc" aria-selected="false" aria-controls="panelEnc">加密（新增記錄）</button>
+  </div>
+
+  <!-- 解密 -->
+  <section class="card" id="panelDec" role="tabpanel" aria-labelledby="tabDec">
+    <div class="field">
+      <label for="cipherIn">貼上 .txt 裡加密過的內容</label>
+      <textarea id="cipherIn" spellcheck="false" placeholder="gmail : id :QQQ@gmail.com , pw :ENC[v1:...]"></textarea>
+      <p class="hint">可以只貼 ENC[...]，也可以貼整行或整份 .txt，會自動找出所有加密密碼。</p>
+    </div>
+    <div class="actions">
+      <button type="button" class="primary" id="btnDec">解密</button>
+      <button type="button" id="btnDecClear">清除</button>
+    </div>
+    <div class="msg" id="decMsg" role="status"></div>
+    <div id="decResults"></div>
+  </section>
+
+  <!-- 加密 -->
+  <section class="card hidden" id="panelEnc" role="tabpanel" aria-labelledby="tabEnc">
+    <div class="field">
+      <label for="master2">再輸入一次解鎖鑰匙</label>
+      <div class="row">
+        <input id="master2" type="password" autocomplete="off" spellcheck="false">
+        <button type="button" data-toggle="master2">顯示</button>
+      </div>
+      <p class="hint">防止打錯字。加密時解鎖鑰匙打錯，之後就解不開了。</p>
+    </div>
+    <div class="field">
+      <label for="plainIn">要加密的網站密碼</label>
+      <div class="row">
+        <input id="plainIn" type="password" autocomplete="off" spellcheck="false">
+        <button type="button" data-toggle="plainIn">顯示</button>
+      </div>
+      <div class="actions">
+        <button type="button" id="btnGen">產生隨機強密碼</button>
+        <input id="genLen" type="number" min="8" max="64" value="16" aria-label="密碼長度" style="width:80px">
+        <span class="hint" style="align-self:center;margin:0">字元</span>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="button" class="primary" id="btnEnc">加密</button>
+      <button type="button" id="btnEncClear">清除</button>
+    </div>
+    <div class="msg" id="encMsg" role="status"></div>
+    <div id="encOutWrap" class="hidden">
+      <div class="output" id="encOut"></div>
+      <div class="actions">
+        <button type="button" id="btnCopyEnc">複製加密結果</button>
+      </div>
+      <p class="hint">把它貼到 .txt 的 pw 後面，例如：<br>gmail : id :QQQ@gmail.com , pw :ENC[v1:...]</p>
+    </div>
+  </section>
+
+  <footer>格式 v1 · PBKDF2-SHA256 600,000 次 · AES-256-GCM</footer>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  const ITERATIONS = 600000;
+  const SALT_LEN = 16;
+  const IV_LEN = 12;
+  const AAD = new TextEncoder().encode('v1');
+  const TOKEN_RE = /ENC\[v1:([A-Za-z0-9+/=]+)\]/g;
+  const IDLE_MS = 5 * 60 * 1000;
+  const CLIPBOARD_CLEAR_MS = 30 * 1000;
+
+  const $ = (id) => document.getElementById(id);
+  const te = new TextEncoder();
+  const td = new TextDecoder();
+
+  if (!(window.crypto && crypto.subtle)) {
+    $('noCrypto').classList.remove('hidden');
+    document.querySelectorAll('button.primary').forEach((b) => (b.disabled = true));
+    return;
+  }
+
+  // ---------- 加解密核心 ----------
+  const toB64 = (bytes) => btoa(String.fromCharCode(...bytes));
+  const fromB64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+
+  async function deriveKey(master, salt) {
+    const base = await crypto.subtle.importKey('raw', te.encode(master.normalize('NFC')), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations: ITERATIONS, hash: 'SHA-256' },
+      base,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  }
+
+  async function encrypt(master, plain) {
+    const salt = crypto.getRandomValues(new Uint8Array(SALT_LEN));
+    const iv = crypto.getRandomValues(new Uint8Array(IV_LEN));
+    const key = await deriveKey(master, salt);
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: AAD }, key, te.encode(plain)));
+    const blob = new Uint8Array(SALT_LEN + IV_LEN + ct.length);
+    blob.set(salt, 0);
+    blob.set(iv, SALT_LEN);
+    blob.set(ct, SALT_LEN + IV_LEN);
+    return 'ENC[v1:' + toB64(blob) + ']';
+  }
+
+  async function decrypt(master, b64) {
+    let blob;
+    try { blob = fromB64(b64); } catch { throw new Error('格式錯誤'); }
+    if (blob.length < SALT_LEN + IV_LEN + 16) throw new Error('格式錯誤');
+    const salt = blob.slice(0, SALT_LEN);
+    const iv = blob.slice(SALT_LEN, SALT_LEN + IV_LEN);
+    const ct = blob.slice(SALT_LEN + IV_LEN);
+    const key = await deriveKey(master, salt);
+    try {
+      return td.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv, additionalData: AAD }, key, ct));
+    } catch {
+      throw new Error('解鎖鑰匙錯誤，或內容被改過');
+    }
+  }
+
+  // ---------- 隨機密碼 ----------
+  const CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*-_=+?';
+  function randomPassword(len) {
+    const out = [];
+    const limit = 256 - (256 % CHARSET.length); // 拒絕取樣，避免分布不均
+    while (out.length < len) {
+      for (const b of crypto.getRandomValues(new Uint8Array(len * 2))) {
+        if (b < limit && out.length < len) out.push(CHARSET[b % CHARSET.length]);
+      }
+    }
+    return out.join('');
+  }
+
+  // ---------- 剪貼簿 ----------
+  let clipTimer = null;
+  async function copyText(text, msgEl) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+    setMsg(msgEl, '已複製，30 秒後自動清除剪貼簿。', 'ok');
+    clearTimeout(clipTimer);
+    clipTimer = setTimeout(() => {
+      navigator.clipboard.writeText('').catch(() => {});
+    }, CLIPBOARD_CLEAR_MS);
+  }
+
+  // ---------- 介面 ----------
+  function setMsg(el, text, kind) {
+    el.textContent = text;
+    el.className = 'msg' + (kind ? ' ' + kind : '');
+  }
+
+  function busy(btn, on, label) {
+    btn.disabled = on;
+    if (on) { btn.dataset.label = btn.textContent; btn.textContent = label; }
+    else if (btn.dataset.label) btn.textContent = btn.dataset.label;
+  }
+
+  document.querySelectorAll('[data-toggle]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const input = $(btn.dataset.toggle);
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      btn.textContent = show ? '隱藏' : '顯示';
+    });
+  });
+
+  function selectTab(which) {
+    const dec = which === 'dec';
+    $('tabDec').setAttribute('aria-selected', dec);
+    $('tabEnc').setAttribute('aria-selected', !dec);
+    $('panelDec').classList.toggle('hidden', !dec);
+    $('panelEnc').classList.toggle('hidden', dec);
+  }
+  $('tabDec').addEventListener('click', () => selectTab('dec'));
+  $('tabEnc').addEventListener('click', () => selectTab('enc'));
+
+  // 解密
+  $('btnDec').addEventListener('click', async () => {
+    const msg = $('decMsg');
+    const results = $('decResults');
+    results.replaceChildren();
+    const master = $('master').value;
+    if (!master) return setMsg(msg, '請先輸入解鎖鑰匙。', 'err');
+
+    const text = $('cipherIn').value;
+    const lines = text.split(/\r?\n/);
+    const items = [];
+    for (const line of lines) {
+      for (const m of line.matchAll(TOKEN_RE)) {
+        // 只留網站和帳號，去掉加密內容和結尾的「, pw :」
+        const label = line.replace(TOKEN_RE, '').replace(/[\s,，]*(pw\s*(\(.*?\))?)?[\s:：]*$/i, '').trim();
+        items.push({ b64: m[1], label });
+      }
+    }
+    if (!items.length) return setMsg(msg, '找不到 ENC[v1:...] 格式的加密內容。', 'err');
+
+    const btn = $('btnDec');
+    busy(btn, true, '解密中…');
+    let ok = 0, fail = 0;
+    for (let i = 0; i < items.length; i++) {
+      setMsg(msg, `解密中… ${i + 1} / ${items.length}`);
+      const it = items[i];
+      const box = document.createElement('div');
+      box.className = 'result';
+      const labelText = it.label || (items.length > 1 ? `第 ${i + 1} 筆` : '');
+      if (labelText) {
+        const label = document.createElement('div');
+        label.className = 'label';
+        label.textContent = labelText;
+        box.appendChild(label);
+      }
+      try {
+        const pw = await decrypt(master, it.b64);
+        ok++;
+        const row = document.createElement('div');
+        row.className = 'row';
+        const pwEl = document.createElement('span');
+        pwEl.className = 'pw';
+        pwEl.textContent = '••••••••';
+        const show = document.createElement('button');
+        show.type = 'button';
+        show.textContent = '顯示';
+        show.addEventListener('click', () => {
+          const hidden = show.textContent === '顯示';
+          pwEl.textContent = hidden ? pw : '••••••••';
+          show.textContent = hidden ? '隱藏' : '顯示';
+        });
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.className = 'primary';
+        copy.textContent = '複製';
+        copy.addEventListener('click', () => copyText(pw, msg));
+        row.append(pwEl, show, copy);
+        box.appendChild(row);
+      } catch (e) {
+        fail++;
+        const err = document.createElement('div');
+        err.className = 'msg err';
+        err.textContent = e.message;
+        box.appendChild(err);
+      }
+      results.appendChild(box);
+    }
+    busy(btn, false);
+    setMsg(msg, fail ? `成功 ${ok} 筆，失敗 ${fail} 筆。` : `成功解密 ${ok} 筆。`, fail ? 'err' : 'ok');
+  });
+
+  $('btnDecClear').addEventListener('click', () => {
+    $('cipherIn').value = '';
+    $('decResults').replaceChildren();
+    setMsg($('decMsg'), '');
+  });
+
+  // 加密
+  $('btnGen').addEventListener('click', () => {
+    const len = Math.min(64, Math.max(8, parseInt($('genLen').value, 10) || 16));
+    $('genLen').value = len;
+    $('plainIn').value = randomPassword(len);
+    $('plainIn').type = 'text';
+    document.querySelector('[data-toggle="plainIn"]').textContent = '隱藏';
+    setMsg($('encMsg'), '已產生隨機密碼。記得先到網站改成這組密碼，再把加密結果存進 .txt。', 'ok');
+  });
+
+  $('btnEnc').addEventListener('click', async () => {
+    const msg = $('encMsg');
+    const master = $('master').value;
+    const plain = $('plainIn').value;
+    $('encOutWrap').classList.add('hidden');
+    if (!master) return setMsg(msg, '請先在上方輸入解鎖鑰匙。', 'err');
+    if (master !== $('master2').value) return setMsg(msg, '兩次輸入的解鎖鑰匙不一樣，請重新確認。', 'err');
+    if (!plain) return setMsg(msg, '請輸入要加密的密碼。', 'err');
+
+    const btn = $('btnEnc');
+    busy(btn, true, '加密中…');
+    try {
+      const token = await encrypt(master, plain);
+      // 立刻解回來比對，確認結果可用
+      if ((await decrypt(master, token.slice(7, -1))) !== plain) throw new Error('驗證失敗');
+      $('encOut').textContent = token;
+      $('encOutWrap').classList.remove('hidden');
+      setMsg(msg, '加密完成，已驗證可以正確解回。', 'ok');
+    } catch (e) {
+      setMsg(msg, '加密失敗：' + e.message, 'err');
+    }
+    busy(btn, false);
+  });
+
+  $('btnCopyEnc').addEventListener('click', () => copyText($('encOut').textContent, $('encMsg')));
+
+  $('btnEncClear').addEventListener('click', () => {
+    $('plainIn').value = '';
+    $('encOut').textContent = '';
+    $('encOutWrap').classList.add('hidden');
+    setMsg($('encMsg'), '');
+  });
+
+  // ---------- 閒置自動清除 ----------
+  let idleTimer = null;
+  function wipe() {
+    ['master', 'master2', 'plainIn', 'cipherIn'].forEach((id) => ($(id).value = ''));
+    $('decResults').replaceChildren();
+    $('encOut').textContent = '';
+    $('encOutWrap').classList.add('hidden');
+    setMsg($('encMsg'), '');
+    setMsg($('decMsg'), '閒置過久，已自動清除所有內容。', 'err');
+  }
+  function resetIdle() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(wipe, IDLE_MS);
+  }
+  ['keydown', 'pointerdown', 'input'].forEach((ev) => document.addEventListener(ev, resetIdle, true));
+  resetIdle();
+})();
+</script>
+</body>
+</html>
