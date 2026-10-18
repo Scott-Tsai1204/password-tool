@@ -123,6 +123,10 @@ button:disabled { opacity: .55; cursor: wait; }
 .warn { background: var(--warn-bg); color: var(--warn-text); border-radius: 8px; padding: 10px 12px; font-size: 14px; margin-top: 12px; }
 .hidden { display: none !important; }
 footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 24px; }
+.report { margin: 10px 0 0; padding-left: 20px; font-size: 14px; }
+.report li { margin: 4px 0; }
+.report li.err { color: var(--err); }
+.report li.warn { color: var(--warn-text); }
 footer .ver { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
 </style>
 </head>
@@ -147,16 +151,17 @@ footer .ver { font-size: 14px; font-weight: 600; color: var(--text); margin-bott
   </section>
 
   <div class="tabs" role="tablist">
-    <button type="button" role="tab" id="tabDec" aria-selected="true" aria-controls="panelDec">解密（取出密碼）</button>
-    <button type="button" role="tab" id="tabEnc" aria-selected="false" aria-controls="panelEnc">加密（新增記錄）</button>
+    <button type="button" role="tab" id="tabDec" aria-selected="true" aria-controls="panelDec">解密取出</button>
+    <button type="button" role="tab" id="tabEnc" aria-selected="false" aria-controls="panelEnc">加密新增</button>
+    <button type="button" role="tab" id="tabConv" aria-selected="false" aria-controls="panelConv">整份轉換</button>
   </div>
 
   <!-- 解密 -->
   <section class="card" id="panelDec" role="tabpanel" aria-labelledby="tabDec">
     <div class="field">
       <label for="cipherIn">貼上 .txt 裡加密過的內容</label>
-      <textarea id="cipherIn" spellcheck="false" placeholder="gmail : id :QQQ@gmail.com , pw :ENC[v1:...]"></textarea>
-      <p class="hint">可以只貼 ENC[...]，也可以貼整行或整份 .txt，會自動找出所有加密密碼。</p>
+      <textarea id="cipherIn" spellcheck="false" placeholder="[Gmail]&#10;id: QQQ@gmail.com&#10;pw: ENC[v1:...]"></textarea>
+      <p class="hint">可以只貼 ENC[...]，也可以貼一整筆或整份 .txt，會自動找出所有加密欄位。</p>
     </div>
     <div class="actions">
       <button type="button" class="primary" id="btnDec">解密</button>
@@ -198,12 +203,44 @@ footer .ver { font-size: 14px; font-weight: 600; color: var(--text); margin-bott
       <div class="actions">
         <button type="button" id="btnCopyEnc">複製加密結果</button>
       </div>
-      <p class="hint">把它貼到 .txt 的 pw 後面，例如：<br>gmail : id :QQQ@gmail.com , pw :ENC[v1:...]</p>
+      <p class="hint">把它貼到 .txt 的 pw: 後面，例如：<br>pw: ENC[v1:...]</p>
+    </div>
+  </section>
+
+  <!-- 整份轉換 -->
+  <section class="card hidden" id="panelConv" role="tabpanel" aria-labelledby="tabConv">
+    <div class="field">
+      <label for="master3">再輸入一次解鎖鑰匙</label>
+      <div class="row">
+        <input id="master3" type="password" autocomplete="off" spellcheck="false">
+        <button type="button" data-toggle="master3">顯示</button>
+      </div>
+      <p class="hint">防止打錯字。加密時解鎖鑰匙打錯，之後就解不開了。</p>
+    </div>
+    <div class="field">
+      <label for="convIn">貼上整份明碼資料</label>
+      <textarea id="convIn" spellcheck="false" style="min-height:180px" placeholder="[Gmail]&#10;id: QQQ@gmail.com&#10;pw: 1234567&#10;memo: 主要信箱&#10;&#10;[台灣銀行]&#10;id: scott123&#10;pw: abc888&#10;pw-atm: 9999"></textarea>
+      <p class="hint"><b>pw</b> 和 <b>pw-</b> 開頭的欄位會自動加密；id、memo 維持原樣；已經是 ENC[...] 的欄位會跳過。</p>
+    </div>
+    <div class="actions">
+      <button type="button" class="primary" id="btnConv">轉換</button>
+      <button type="button" id="btnConvClear">清除</button>
+    </div>
+    <div class="msg" id="convMsg" role="status"></div>
+    <ul id="convReport" class="report hidden"></ul>
+    <div id="convOutWrap" class="hidden">
+      <label for="convOut" style="margin-top:14px">轉換結果（已加密）</label>
+      <textarea id="convOut" readonly spellcheck="false" style="min-height:180px"></textarea>
+      <div class="actions">
+        <button type="button" class="primary" id="btnDlConv">下載 .txt</button>
+        <button type="button" id="btnCopyConv">複製全部</button>
+      </div>
+      <p class="hint">存好加密版本、確認能解密之後，記得<b>永久刪除</b>明碼的原始檔案。</p>
     </div>
   </section>
 
   <footer>
-    <div class="ver">工具版本 v1.2（2026-10-17）</div>
+    <div class="ver">工具版本 v1.3（2026-10-18）</div>
     <div>加密方式：PBKDF2-SHA256 60 萬次 · AES-256-GCM（資料格式 ENC v1）</div>
   </footer>
 </main>
@@ -250,10 +287,11 @@ footer .ver { font-size: 14px; font-weight: 600; color: var(--text); margin-bott
     );
   }
 
-  async function encrypt(master, plain) {
-    const salt = crypto.getRandomValues(new Uint8Array(SALT_LEN));
+  const newSalt = () => crypto.getRandomValues(new Uint8Array(SALT_LEN));
+
+  // 每筆都有自己的隨機 IV；整份轉換時共用同一個 salt，只需推導一次金鑰
+  async function encryptWith(key, salt, plain) {
     const iv = crypto.getRandomValues(new Uint8Array(IV_LEN));
-    const key = await deriveKey(master, salt);
     const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: AAD }, key, te.encode(plain)));
     const blob = new Uint8Array(SALT_LEN + IV_LEN + ct.length);
     blob.set(salt, 0);
@@ -262,14 +300,27 @@ footer .ver { font-size: 14px; font-weight: 600; color: var(--text); margin-bott
     return 'ENC[v1:' + toB64(blob) + ']';
   }
 
-  async function decrypt(master, b64) {
+  async function encrypt(master, plain) {
+    const salt = newSalt();
+    return encryptWith(await deriveKey(master, salt), salt, plain);
+  }
+
+  // cache：同一批解密時，salt 相同就重用金鑰，不必重算 60 萬次
+  function keyFor(master, salt, cache) {
+    if (!cache) return deriveKey(master, salt);
+    const id = toB64(salt);
+    if (!cache.has(id)) cache.set(id, deriveKey(master, salt));
+    return cache.get(id);
+  }
+
+  async function decrypt(master, b64, cache) {
     let blob;
     try { blob = fromB64(b64); } catch { throw new Error('格式錯誤'); }
     if (blob.length < SALT_LEN + IV_LEN + 16) throw new Error('格式錯誤');
     const salt = blob.slice(0, SALT_LEN);
     const iv = blob.slice(SALT_LEN, SALT_LEN + IV_LEN);
     const ct = blob.slice(SALT_LEN + IV_LEN);
-    const key = await deriveKey(master, salt);
+    const key = await keyFor(master, salt, cache);
     try {
       return td.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv, additionalData: AAD }, key, ct));
     } catch {
@@ -331,15 +382,21 @@ footer .ver { font-size: 14px; font-weight: 600; color: var(--text); margin-bott
     });
   });
 
+  const TABS = ['Dec', 'Enc', 'Conv'];
   function selectTab(which) {
-    const dec = which === 'dec';
-    $('tabDec').setAttribute('aria-selected', dec);
-    $('tabEnc').setAttribute('aria-selected', !dec);
-    $('panelDec').classList.toggle('hidden', !dec);
-    $('panelEnc').classList.toggle('hidden', dec);
+    for (const t of TABS) {
+      $('tab' + t).setAttribute('aria-selected', t === which);
+      $('panel' + t).classList.toggle('hidden', t !== which);
+    }
   }
-  $('tabDec').addEventListener('click', () => selectTab('dec'));
-  $('tabEnc').addEventListener('click', () => selectTab('enc'));
+  TABS.forEach((t) => $('tab' + t).addEventListener('click', () => selectTab(t)));
+
+  // ---------- 制式格式 ----------
+  const HEADER_RE = /^\s*\[(.+)\]\s*$/;
+  const FIELD_RE = /^(\s*)([A-Za-z][\w-]*)\s*[:：]\s*(.*?)\s*$/;
+  const FULL_TOKEN_RE = /^ENC\[v1:([A-Za-z0-9+/=]+)\]$/;
+  const isSecretField = (name) => /^pw(-.+)?$/i.test(name);
+  const isKnownField = (name) => /^(id|memo|pw(-.+)?)$/i.test(name);
 
   // 解密
   $('btnDec').addEventListener('click', async () => {
@@ -352,10 +409,20 @@ footer .ver { font-size: 14px; font-weight: 600; color: var(--text); margin-bott
     const text = $('cipherIn').value;
     const lines = text.split(/\r?\n/);
     const items = [];
+    let entry = '';
     for (const line of lines) {
+      const h = line.match(HEADER_RE);
+      if (h) { entry = h[1].trim(); continue; }
+      const f = line.match(FIELD_RE);
       for (const m of line.matchAll(TOKEN_RE)) {
-        // 只留網站和帳號，去掉加密內容和結尾的「, pw :」
-        const label = line.replace(TOKEN_RE, '').replace(/[\s,，]*(pw\s*(\(.*?\))?)?[\s:：]*$/i, '').trim();
+        let label;
+        if (f && FULL_TOKEN_RE.test(f[3])) {
+          // 制式格式：顯示「名稱 · 欄位」
+          label = [entry, f[2]].filter(Boolean).join(' · ');
+        } else {
+          // 舊格式：只留網站和帳號，去掉加密內容和結尾的「, pw :」
+          label = line.replace(TOKEN_RE, '').replace(/[\s,，]*(pw\s*(\(.*?\))?)?[\s:：]*$/i, '').trim();
+        }
         items.push({ b64: m[1], label });
       }
     }
@@ -363,6 +430,7 @@ footer .ver { font-size: 14px; font-weight: 600; color: var(--text); margin-bott
 
     const btn = $('btnDec');
     busy(btn, true, '解密中…');
+    const cache = new Map();
     let ok = 0, fail = 0;
     for (let i = 0; i < items.length; i++) {
       setMsg(msg, `解密中… ${i + 1} / ${items.length}`);
@@ -377,7 +445,7 @@ footer .ver { font-size: 14px; font-weight: 600; color: var(--text); margin-bott
         box.appendChild(label);
       }
       try {
-        const pw = await decrypt(master, it.b64);
+        const pw = await decrypt(master, it.b64, cache);
         ok++;
         const row = document.createElement('div');
         row.className = 'row';
@@ -461,14 +529,155 @@ footer .ver { font-size: 14px; font-weight: 600; color: var(--text); margin-bott
     setMsg($('encMsg'), '');
   });
 
+  // 整份轉換
+  function showReport(list) {
+    const ul = $('convReport');
+    ul.replaceChildren(...list.map(({ kind, text }) => {
+      const li = document.createElement('li');
+      li.className = kind;
+      li.textContent = text;
+      return li;
+    }));
+    ul.classList.toggle('hidden', !list.length);
+  }
+
+  $('btnConv').addEventListener('click', async () => {
+    const msg = $('convMsg');
+    const master = $('master').value;
+    const text = $('convIn').value;
+    $('convOutWrap').classList.add('hidden');
+    showReport([]);
+    if (!master) return setMsg(msg, '請先在上方輸入解鎖鑰匙。', 'err');
+    if (master !== $('master3').value) return setMsg(msg, '兩次輸入的解鎖鑰匙不一樣，請重新確認。', 'err');
+    if (!text.trim()) return setMsg(msg, '請貼上要轉換的資料。', 'err');
+
+    // 第一步：解析，找出要加密的欄位
+    const eol = text.includes('\r\n') ? '\r\n' : '\n';
+    const lines = text.split(/\r?\n/);
+    const report = [];
+    const names = new Map();
+    const todo = [];      // 明碼欄位 → 要加密
+    const existing = [];  // 已經是 ENC → 確認能用這把鑰匙解開
+    let entries = 0;
+    let entry = null;
+    lines.forEach((line, i) => {
+      const no = i + 1;
+      if (!line.trim()) return;
+      const h = line.match(HEADER_RE);
+      if (h) {
+        entry = h[1].trim();
+        entries++;
+        if (names.has(entry)) report.push({ kind: 'warn', text: `第 ${no} 行：名稱 [${entry}] 跟第 ${names.get(entry)} 行重複。` });
+        else names.set(entry, no);
+        return;
+      }
+      const f = line.match(FIELD_RE);
+      if (!f) {
+        report.push({ kind: 'err', text: `第 ${no} 行：格式無法辨識，可能含有明碼密碼。請改成 [名稱] 或「欄位: 內容」的格式。` });
+        return;
+      }
+      const [, indent, name, value] = f;
+      if (entry === null) report.push({ kind: 'warn', text: `第 ${no} 行：「${name}」前面沒有 [名稱]。` });
+      if (!isKnownField(name)) {
+        report.push({ kind: 'err', text: `第 ${no} 行：欄位「${name}」不是 id、pw、pw-xxx、memo。如果它是密碼，請改名成 pw-xxx；如果是備註，請改成 memo。` });
+        return;
+      }
+      if (!isSecretField(name)) return;
+      if (!value) {
+        report.push({ kind: 'warn', text: `第 ${no} 行：${entry ? `[${entry}] 的 ` : ''}${name} 是空的。` });
+        return;
+      }
+      const t = value.match(FULL_TOKEN_RE);
+      if (t) existing.push({ i, no, b64: t[1] });
+      else todo.push({ i, indent, name, value });
+    });
+
+    if (!todo.length && !existing.length) {
+      showReport(report);
+      return setMsg(msg, '找不到 pw 或 pw- 開頭的欄位，沒有東西可以加密。', 'err');
+    }
+
+    const btn = $('btnConv');
+    busy(btn, true, '轉換中…');
+    try {
+      // 第二步：已加密的欄位，確認是同一把鑰匙
+      const cache = new Map();
+      for (const ex of existing) {
+        setMsg(msg, `檢查已加密的欄位… 第 ${ex.no} 行`);
+        try { await decrypt(master, ex.b64, cache); }
+        catch { report.push({ kind: 'err', text: `第 ${ex.no} 行：已加密的內容無法用這把鑰匙解開（鑰匙不同或內容損壞）。` }); }
+      }
+      if (report.some((r) => r.kind === 'err')) {
+        showReport(report);
+        return setMsg(msg, '有錯誤，沒有產生轉換結果。請修正紅字的項目後再試一次。', 'err');
+      }
+
+      // 第三步：加密（整批只推導一次金鑰）
+      setMsg(msg, '加密中…');
+      const salt = newSalt();
+      const key = await deriveKey(master, salt);
+      const out = lines.slice();
+      for (const it of todo) {
+        it.token = await encryptWith(key, salt, it.value);
+        out[it.i] = `${it.indent}${it.name}: ${it.token}`;
+      }
+
+      // 第四步：全部解回來比對；第一筆另外重新推導金鑰，確認鑰匙本身沒問題
+      setMsg(msg, '核對中…');
+      cache.set(toB64(salt), Promise.resolve(key));
+      for (const [n, it] of todo.entries()) {
+        const back = await decrypt(master, it.token.slice(7, -1), n === 0 ? null : cache);
+        if (back !== it.value) throw new Error('核對失敗');
+      }
+
+      $('convOut').value = out.join(eol);
+      $('convOutWrap').classList.remove('hidden');
+      $('convIn').value = '';
+      if (report.length) report.unshift({ kind: 'warn', text: '以下項目請確認（不影響其他欄位的加密）：' });
+      showReport(report);
+      setMsg(msg,
+        `完成！共 ${entries} 筆資料，新加密 ${todo.length} 個欄位` +
+        (existing.length ? `，${existing.length} 個原本就已加密（已確認是同一把鑰匙）` : '') +
+        '，全部核對無誤。明碼輸入框已清空。', 'ok');
+    } catch (e) {
+      setMsg(msg, '轉換失敗：' + e.message, 'err');
+    } finally {
+      busy(btn, false);
+    }
+  });
+
+  $('btnDlConv').addEventListener('click', () => {
+    const url = URL.createObjectURL(new Blob([$('convOut').value], { type: 'text/plain;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'passwords.txt';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+
+  $('btnCopyConv').addEventListener('click', () => copyText($('convOut').value, $('convMsg')));
+
+  $('btnConvClear').addEventListener('click', () => {
+    $('convIn').value = '';
+    $('convOut').value = '';
+    $('convOutWrap').classList.add('hidden');
+    showReport([]);
+    setMsg($('convMsg'), '');
+  });
+
   // ---------- 閒置自動清除 ----------
   let idleTimer = null;
   function wipe() {
-    ['master', 'master2', 'plainIn', 'cipherIn'].forEach((id) => ($(id).value = ''));
+    ['master', 'master2', 'master3', 'plainIn', 'cipherIn', 'convIn', 'convOut'].forEach((id) => ($(id).value = ''));
     $('decResults').replaceChildren();
     $('encOut').textContent = '';
     $('encOutWrap').classList.add('hidden');
+    $('convOutWrap').classList.add('hidden');
+    showReport([]);
     setMsg($('encMsg'), '');
+    setMsg($('convMsg'), '');
     setMsg($('decMsg'), '閒置過久，已自動清除所有內容。', 'err');
   }
   function resetIdle() {
